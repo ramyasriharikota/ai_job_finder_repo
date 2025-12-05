@@ -1,0 +1,106 @@
+<!-- templates/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AI Job Finder</title>
+  <link rel="stylesheet" href="/static/style.css">
+
+  <style>
+    .center-box {
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 28px;
+      border-radius: 14px;
+      background: white;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+    }
+    .input-field {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .upload-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .center {
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="page container">
+    <h1 class="site-title center">AI Job Finder</h1>
+
+    <div class="center-box">
+
+      <div class="upload-row">
+        <input type="file" id="resumeUpload" accept=".pdf,.doc,.docx" class="input-field" style="padding:6px;">
+        <button class="btn primary" type="button" onclick="uploadResume()">📄 Upload Resume</button>
+      </div>
+
+      <form action="/search" method="post">
+
+        <input name="role" placeholder="Role (e.g. Data Analyst)" class="input-field" value="Data Analyst">
+
+        <input name="location" placeholder="Location (e.g. Mumbai)" class="input-field" value="Mumbai">
+
+        <!-- Updated textarea -->
+        <textarea 
+              id="skills"
+              name="skills"
+              placeholder="Extracted skills will appear here..."
+              class="input-field"
+              style="min-height: 90px; resize: vertical; overflow:hidden;"
+              oninput="autoGrow(this)"
+        ></textarea>
+
+        <div class="center" style="margin-top:18px;">
+          <button type="submit" class="btn primary" style="padding:12px 22px; font-size:15px;">
+            🔍 Search Jobs
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+
+<script>
+async function uploadResume() {
+    const file = document.getElementById("resumeUpload").files[0];
+    if (!file) return alert("Please upload a resume file.");
+
+    const formData = new FormData();
+    formData.append("resume", file);
+
+    const res = await fetch("/extract_skills", { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (data.ok) {
+        const box = document.getElementById("skills");
+        box.value = data.skills;
+        autoGrow(box);
+        alert("✅ Skills extracted from resume!");
+    } else {
+        alert("❌ Error: " + data.error);
+    }
+}
+
+function autoGrow(textarea) {
+    textarea.style.height = "auto"; 
+    textarea.style.height = (textarea.scrollHeight + 4) + "px";
+}
+
+</script>
+
+</body>
+</html>

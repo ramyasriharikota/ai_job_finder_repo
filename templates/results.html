@@ -1,0 +1,469 @@
+<!-- templates/results.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Job Results</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- ✅ AUTO-CLEAR CACHE ON EVERY NEW SEARCH -->
+  <script>
+    localStorage.removeItem("jobAgentCache_v1");
+    console.log("🔄 Cache cleared automatically on new search.");
+  </script>
+</head>
+
+<body>
+  <div class="page container">
+
+    <!-- Header: keep branding left, analyze button on right -->
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px;">
+      <h1 class="site-title" style="margin:6px 0 10px 0;">AI Job Finder</h1>
+      <div>
+        <button class="btn primary" id="rankAllBtn">🔥 Analyze All Jobs (AI Ranking + Chart)</button>
+      </div>
+    </div>
+
+    <div class="controls" style="margin-bottom:12px;">
+      <!-- Note: Clear Cache button removed as requested -->
+    </div>
+
+    <div class="job-grid">
+      {% for job in jobs %}
+      <div class="job-card">
+        <div class="job-top">
+          <div>
+            <h2 class="job-title">{{ job.title }}</h2>
+            <div class="meta">
+              <span class="company">{{ job.company }}</span>
+              <span class="location">{{ job.location }}</span>
+              <span class="source">{{ job.source }}</span>
+            </div>
+          </div>
+          <a href="{{ job.link }}" target="_blank" class="btn apply small">Apply</a>
+        </div>
+
+        <div class="card-actions">
+          <button class="btn secondary" onclick="analyzeJob({{ loop.index0 }})">AI Insights</button>
+          <button class="btn ghost" onclick="futureSkills({{ loop.index0 }})">Future Skills</button>
+          <button class="btn neutral" onclick="reasoningAgent({{ loop.index0 }})">Reasoning</button>
+          <button class="btn ghost2" onclick="careerPredict({{ loop.index0 }})">Career Path</button>
+          <button class="btn consensus" onclick="consensusAgent({{ loop.index0 }})">🤝 Consensus</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="modal" aria-hidden="true">
+    <div class="modal-inner">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+<script>
+/* ===========================================================
+   CACHE + PERSISTENCE
+   (auto-cleared earlier in HEAD on page load)
+   =========================================================== */
+let CACHE = {};
+try {
+  const saved = localStorage.getItem("jobAgentCache_v1");
+  if (saved) CACHE = JSON.parse(saved);
+} catch (e) { CACHE = {}; }
+
+function saveCache() {
+  try { localStorage.setItem("jobAgentCache_v1", JSON.stringify(CACHE)); } catch(e) {}
+}
+
+/* ===========================================================
+   JOBS FROM SERVER
+   (MUST USE window.ALL_JOBS so agents get latest result)
+   =========================================================== */
+window.ALL_JOBS = {{ jobs | tojson | safe }};
+
+/* Modal helpers */
+function showModal(html) {
+  document.getElementById("modal-body").innerHTML = html;
+  document.getElementById("modal").style.display = "flex";
+  document.getElementById("modal").setAttribute("aria-hidden", "false");
+  const inner = document.querySelector(".modal-inner");
+  if (inner) inner.scrollTop = 0;
+}
+function closeModal() {
+  document.getElementById("modal").style.display = "none";
+  document.getElementById("modal").setAttribute("aria-hidden", "true");
+}
+
+function wrapReport(html) {
+  return `<div class="ai-card">${html}</div>`;
+}
+
+/* ===========================================================
+   CORE AGENT CALLER
+   =========================================================== */
+async function callAgent(endpoint, payload) {
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(payload)
+  });
+  return res.json();
+}
+
+/* ===========================================================
+   AI INSIGHTS
+   =========================================================== */
+async function analyzeJob(index) {
+  const job = window.ALL_JOBS[index];
+  const key = "insights_" + index;
+
+  if (CACHE[key]) {
+    return showModal(wrapReport(formatTextAsSections(CACHE[key])));
+  }
+
+  showModal("<div class='loading'>⏳ Generating AI Insights...</div>");
+
+  try {
+    const j = await callAgent("/analyze", {
+      title: job.title, company: job.company, description: job.description||"", user_skills: job.user_skills||""
+    });
+    if (!j.ok) return showModal("Error: " + (j.error || "Unknown"));
+
+    CACHE[key] = j.ai;
+    saveCache();
+    showModal(wrapReport(formatTextAsSections(j.ai)));
+  } catch (err) {
+    showModal("Error: " + err);
+  }
+}
+
+/* ===========================================================
+   FUTURE SKILLS
+   =========================================================== */
+async function futureSkills(index) {
+  const job = window.ALL_JOBS[index];
+  const key = "future_" + index;
+
+  if (CACHE[key]) {
+    return showModal(wrapReport(formatTextAsSections(CACHE[key])));
+  }
+
+  showModal("<div class='loading'>⏳ Generating Future Skills...</div>");
+
+  try {
+    const j = await callAgent("/future_skills", {
+      title: job.title, company: job.company, location: job.location||"", user_skills: job.user_skills||""
+    });
+    if (!j.ok) return showModal("Error: " + (j.error || "Unknown"));
+
+    CACHE[key] = j.report;
+    saveCache();
+    showModal(wrapReport(formatTextAsSections(j.report)));
+  } catch (err) {
+    showModal("Error: " + err);
+  }
+}
+
+/* ===========================================================
+   REASONING
+   =========================================================== */
+async function reasoningAgent(index) {
+  const job = window.ALL_JOBS[index];
+  const key = "reasoning_" + index;
+
+  if (CACHE[key]) {
+    return showModal(wrapReport(formatTextAsSections(CACHE[key])));
+  }
+
+  showModal("<div class='loading'>🧠 Running Reasoning...</div>");
+
+  try {
+    const j = await callAgent("/reasoning", {
+      title: job.title, company: job.company, description: job.description||"", user_skills: job.user_skills||""
+    });
+    if (!j.ok) return showModal("Error: " + (j.error || "Unknown"));
+
+    CACHE[key] = j.report;
+    saveCache();
+    showModal(wrapReport(formatTextAsSections(j.report)));
+  } catch (err) {
+    showModal("Error: " + err);
+  }
+}
+
+/* ===========================================================
+   CAREER PREDICT
+   =========================================================== */
+async function careerPredict(index) {
+  const job = window.ALL_JOBS[index];
+  const key = "career_" + index;
+
+  if (CACHE[key]) {
+    return showModal(wrapReport(formatTextAsSections(CACHE[key])));
+  }
+
+  showModal("<div class='loading'>📈 Predicting Career Path...</div>");
+
+  try {
+    const j = await callAgent("/career_predict", {
+      title: job.title, company: job.company, user_skills: job.user_skills||""
+    });
+    if (!j.ok) return showModal("Error: " + (j.error || "Unknown"));
+
+    CACHE[key] = j.report;
+    saveCache();
+    showModal(wrapReport(formatTextAsSections(j.report)));
+  } catch (err) {
+    showModal("Error: " + err);
+  }
+}
+
+/* ===========================================================
+   CONSENSUS
+   =========================================================== */
+async function consensusAgent(index) {
+  const job = window.ALL_JOBS[index];
+  const c_key = "consensus_" + index;
+
+  if (CACHE[c_key]) {
+    return showModal(wrapReport(formatConsensus(CACHE[c_key])));
+  }
+
+  showModal("<div class='loading'>🤝 Preparing reports for consensus...</div>");
+
+  async function ensureCached(endpoint, cacheKey, payload) {
+    if (CACHE[cacheKey]) return CACHE[cacheKey];
+
+    const j = await callAgent(endpoint, payload);
+    if (!j.ok) throw new Error(j.error || "Agent error");
+
+    const value = j.ai || j.report || "";
+    CACHE[cacheKey] = value;
+    saveCache();
+    return value;
+  }
+
+  try {
+    const ai = await ensureCached("/analyze","insights_"+index,{
+      title: job.title, company: job.company, description: job.description||"", user_skills: job.user_skills||""
+    });
+
+    const fs = await ensureCached("/future_skills","future_"+index,{
+      title: job.title, company: job.company, location: job.location||"", user_skills: job.user_skills||""
+    });
+
+    const rs = await ensureCached("/reasoning","reasoning_"+index,{
+      title: job.title, company: job.company, description: job.description||"", user_skills: job.user_skills||""
+    });
+
+    const cp = await ensureCached("/career_predict","career_"+index,{
+      title: job.title, company: job.company, user_skills: job.user_skills||""
+    });
+
+    showModal("<div class='loading'>🤝 Generating consensus (deterministic)...</div>");
+
+    const r = await fetch("/consensus", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ ai_insights: ai, future_skills: fs, reasoning: rs, career_path: cp })
+    });
+
+    const jr = await r.json();
+    if (!jr.ok) return showModal("Error: " + (jr.error || "Unknown"));
+
+    CACHE[c_key] = jr.report;
+    saveCache();
+    showModal(wrapReport(formatConsensus(jr.report)));
+
+  } catch (err) {
+    showModal("Error: " + err.message);
+  }
+}
+
+/* ===========================================================
+   RANK ALL JOBS (CHART)
+   =========================================================== */
+document.getElementById("rankAllBtn").addEventListener("click", async () => {
+  showModal("<div class='loading'>⏳ Creating ranking chart...</div>");
+
+  const skills = (window.ALL_JOBS.length && window.ALL_JOBS[0].user_skills)
+    ? window.ALL_JOBS[0].user_skills
+    : "";
+
+  try {
+    const res = await fetch("/rank_jobs", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ jobs: window.ALL_JOBS, skills })
+    });
+
+    const data = await res.json();
+    if (!data.ok) return showModal("Error: " + (data.error || "Unknown"));
+
+    const labels = data.rankings.map(r => r.title);
+    const scores = data.rankings.map(r => r.score);
+
+    const html = `
+      <h2 class="modal-title">AI Job Ranking</h2>
+      <canvas id="rankChart" width="800" height="300"></canvas>
+      <div class="ranking-list">
+        ${data.rankings.map(r => `<div class="rank-row"><strong>${r.title}</strong><span>${r.score}/100</span></div>`).join("")}
+      </div>
+    `;
+    showModal(html);
+
+    new Chart(document.getElementById("rankChart"), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Match Score',
+          data: scores,
+          backgroundColor: '#4a8cff'
+        }]
+      },
+      options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } } }
+    });
+
+  } catch (err) {
+    showModal("Error: " + err.message);
+  }
+});
+
+/* ===========================================================
+   FORMATTERS (same as before)
+   =========================================================== */
+function formatTextAsSections(text) {
+  if (!text) return "<p>No content.</p>";
+  const esc = t => t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  let html = esc(text);
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(^|\n)###\s*(.+)/g,"<h3 class='sec'>$2</h3>");
+  html = html.replace(/(^|\n)🔮\s*(.+)/g,"<h3 class='big-sec'>$2</h3>");
+  html = html.replace(/(^|\n)🎯\s*(.+)/g,"<h4 class='mini-sec'>$2</h4>");
+  html = html.replace(/(^|\n)🧭\s*(.+)/g,"<h4 class='mini-sec'>$2</h4>");
+  html = html.replace(/(^|\n)📈\s*(.+)/g,"<h4 class='mini-sec'>$2</h4>");
+  html = html.replace(/\n-\s+/g,"<li>");
+  html = html.replace(/\n\d+\.\s+/g,"<li>");
+  html = html.replace(/\n/g,"<br>");
+  html = html.replace(/(<li>.+?(<br>|$))/g,"<ul>$1</ul>");
+  html = html.replace(/(<br>\s*){2,}/g, "<br>");
+  return `<div class="report-body">${html}</div>`;
+}
+
+function formatConsensus(t) {
+  if (!t) return "<p>No consensus returned.</p>";
+  const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  let txt = esc(t);
+
+  txt = txt.replace(/🧾\s*Executive Summary/gi,"[EXEC]");
+  txt = txt.replace(/🎯\s*Unified Career Fit Score[:\s]*/gi,"[SCORE]");
+  txt = txt.replace(/🏋️\s*Combined Key Strengths/gi,"[STRENGTHS]");
+  txt = txt.replace(/⚠️\s*Top 5 Critical Gaps/gi,"[GAPS]");
+  txt = txt.replace(/🧭\s*Priority Roadmap/gi,"[ROADMAP]");
+  txt = txt.replace(/📈\s*Career Projection/gi,"[PROJECTION]");
+  txt = txt.replace(/✅\s*Final Recommendation/gi,"[FINAL]");
+
+  const sections = {};
+  const parts = txt.split(/\[EXEC\]|\[SCORE\]|\[STRENGTHS\]|\[GAPS\]|\[ROADMAP\]|\[PROJECTION\]|\[FINAL\]/g);
+  const markers = txt.match(/\[EXEC\]|\[SCORE\]|\[STRENGTHS\]|\[GAPS\]|\[ROADMAP\]|\[PROJECTION\]|\[FINAL\]/g) || [];
+
+  for (let i=0;i<markers.length;i++){
+    sections[markers[i]] = parts[i+1] ? parts[i+1].trim() : "";
+  }
+
+  let html = "";
+
+  if (sections["[EXEC]"])
+    html += `<h2 class="title">🧾 Executive Summary</h2><div class="report-body">${sections["[EXEC]"].replace(/\n/g,"<br>")}</div>`;
+
+  if (sections["[SCORE]"])
+    html += `<h2 class="title">🎯 Unified Career Fit Score</h2><div class="report-body">${sections["[SCORE]"].replace(/\n/g,"<br>")}</div>`;
+
+  if (sections["[STRENGTHS]"])
+    html += `<h2 class="title">🏋️ Combined Key Strengths</h2><div class="report-body">${sections["[STRENGTHS]"].replace(/\n/g,"<br>")}</div>`;
+
+  if (sections["[GAPS]"])
+    html += `<h2 class="title">⚠️ Top 5 Critical Gaps</h2><div class="report-body">${sections["[GAPS]"].replace(/\n/g,"<br>")}</div>`;
+
+  if (sections["[ROADMAP]"])
+    html += `<h2 class="title">🧭 Priority Roadmap</h2><div class="report-body">${sections["[ROADMAP]"].replace(/\n/g,"<br>")}</div>`;
+
+  if (sections["[PROJECTION]"])
+    html += `<h2 class="title">📈 Career Projection</h2><div class="report-body">${sections["[PROJECTION]"].replace(/\n/g,"<br>")}</div>`;
+
+  if (sections["[FINAL]"])
+    html += `<h2 class="title green">✅ Final Recommendation</h2><div class="report-body">${sections["[FINAL]"].replace(/\n/g,"<br>")}</div>`;
+
+  if (!html) return formatTextAsSections(txt);
+
+  return html;
+}
+
+</script>
+<!-- ==================== CHATBOT UI ==================== -->
+<div id="chatbot-button">💬</div>
+
+<div id="chatbot-window">
+  <div id="chatbot-header">
+    <span>AI Job Coach</span>
+    <button id="chatbot-close">✕</button>
+  </div>
+
+  <div id="chatbot-messages"></div>
+
+  <div id="chatbot-input-area">
+    <input id="chatbot-input" type="text" placeholder="Ask me anything..." />
+    <button id="chatbot-send">➤</button>
+  </div>
+</div>
+
+<script>
+// open/close
+document.getElementById("chatbot-button").onclick = () =>
+  document.getElementById("chatbot-window").style.display = "flex";
+
+document.getElementById("chatbot-close").onclick = () =>
+  document.getElementById("chatbot-window").style.display = "none";
+
+// send
+document.getElementById("chatbot-send").onclick = sendMessage;
+document.getElementById("chatbot-input").addEventListener("keypress", e => {
+  if (e.key === "Enter") sendMessage();
+});
+
+function addMsg(t, who){
+  const d = document.createElement("div");
+  d.className = "message " + (who === "user" ? "user-message" : "bot-message");
+  d.innerText = t;
+  document.getElementById("chatbot-messages").appendChild(d);
+  document.getElementById("chatbot-messages").scrollTop = 99999;
+}
+
+async function sendMessage(){
+  let msg = document.getElementById("chatbot-input").value.trim();
+  if (!msg) return;
+  document.getElementById("chatbot-input").value = "";
+  addMsg(msg, "user");
+
+  const r = await fetch("/chat",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({
+      message:msg,
+      skills: ALL_JOBS[0]?.user_skills || "",
+      jobs: ALL_JOBS
+    })
+  });
+
+  const j = await r.json();
+  addMsg(j.reply, "bot");
+}
+</script>
+
+</body>
+</html>
