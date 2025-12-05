@@ -5,6 +5,8 @@ playwright==1.44.0
 requests==2.31.0
 beautifulsoup4==4.12.3
 pyPDF2==3.0.1
-python-docx-1.2.0
+python-docx
+
+
 
 
